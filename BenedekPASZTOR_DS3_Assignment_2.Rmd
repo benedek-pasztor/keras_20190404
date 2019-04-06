@@ -24,13 +24,17 @@ library(grid)
 library(magick)  # not absolutely necessary
 ```
 
+
 ```{r}
-mnist <- dataset_mnist()
-x_train <- mnist$train$x
-y_train <- mnist$train$y
-x_test <- mnist$test$x
-y_test <- mnist$test$y
+fashion_mnist <- dataset_fashion_mnist()
+x_train <- fashion_mnist$train$x
+y_train <- fashion_mnist$train$y
+x_test <- fashion_mnist$test$x
+y_test <- fashion_mnist$test$y
 ```
+
+
+### a. Show some example images from the data.
 
 ```{r, fig.width=2, fig.height=2}
 show_mnist_image <- function(x) {
@@ -41,34 +45,119 @@ show_mnist_image(x_train[18, , ])
 ```
 
 
-```{r}
-fashion_mnist <- dataset_fashion_mnist()
-x_train <- fashion_mnist$train$x
-y_train <- fashion_mnist$train$y
-x_test <- fashion_mnist$test$x
-y_test <- fashion_mnist$test$y
-
+```{r, fig.width=2, fig.height=2}
+show_mnist_image(x_train[27, , ])
 ```
 
 
-
-
-### a. Show some example images from the data.
+```{r, fig.width=2, fig.height=2}
+show_mnist_image(x_train[98, , ])
+```
 
 
 ### b. Train a fully connected deep network to predict items.
 
-
 ##### - Normalize the data similarly to what we saw with MNIST.
 
+```{r}
+# reshape
+x_train <- array_reshape(x_train, c(dim(x_train)[1], 784)) 
+x_test <- array_reshape(x_test, c(dim(x_test)[1], 784)) 
+# rescale
+x_train <- x_train / 255
+x_test <- x_test / 255
+
+# one-hot encoding of the target variable
+y_train <- to_categorical(y_train, 10)
+y_test <- to_categorical(y_test, 10)
+```
 
 ##### - Experiment with network architectures and settings (number of hidden layers, number of nodes, activation functions, dropout, etc.)
 
+###### Model 1
+
+```{r}
+model <- keras_model_sequential() 
+model <- model %>% 
+  layer_dense(units = 128, activation = 'relu', input_shape = c(784)) %>%
+  layer_dropout(rate = 0.3) %>%
+  layer_dense(units = 10, activation = 'softmax')
+```
+
+```{r}
+summary(model)
+```
+```{r}
+model %>% compile(
+  loss = 'categorical_crossentropy',
+  optimizer = optimizer_rmsprop(),
+  metrics = c('accuracy')
+)
+```
+
+```{r message = FALSE, tidy = TRUE}
+history <- model %>% fit(
+  x_train, y_train, 
+  epochs = 4, batch_size = 128, 
+  validation_split = 0.2
+)
+```
+
+```{r}
+model %>% evaluate(x_test, y_test)
+```
+
+###### Model 2
 
 ##### - Explain what you have tried, what worked and what did not. Present a final model.
 
 
 ##### - Make sure that you use enough epochs so that the validation error starts flattening out - provide a plot about the training history (plot(history))
+
+```{r}
+plot(history)
+```
+
+
+
+###### Error check
+
+
+```{r}
+predicted_classes_test <- model %>% predict_classes(x_test)
+real_classes_test <- as.numeric(mnist$test$y)
+library(data.table)
+dt_pred_vs_real <- data.table(predicted = predicted_classes_test, real = real_classes_test)
+
+library(ggplot2)
+ggplot(dt_pred_vs_real[, .N, by = .(predicted, real)], aes(predicted, real)) +
+  geom_tile(aes(fill = N), colour = "white") +
+  scale_x_continuous(breaks = 0:9) +
+  scale_y_continuous(breaks = 0:9) +
+  geom_text(aes(label = sprintf("%1.0f", N)), vjust = 1, color = "white") +
+  scale_fill_viridis_c() +
+  theme_bw() + theme(legend.position = "none")
+```
+
+```{r}
+dt_pred_vs_real[, row_number := 1:.N]
+indices_of_mistakes <- dt_pred_vs_real[predicted != real][["row_number"]]
+```
+
+
+```{r, fig.width=2, fig.height=2}
+ix <- indices_of_mistakes[1]
+
+dt_pred_vs_real[row_number == ix]
+show_mnist_image(fashion_mnist$test$x[ix, , ])
+```
+
+```{r, fig.width=2, fig.height=2}
+ix <- indices_of_mistakes[11]
+
+dt_pred_vs_real[row_number == ix]
+show_mnist_image(fashion_mnist$test$x[ix, , ])
+```
 
 
 ##### - Evaluate the model on the test set. How does test error compare to validation error?
@@ -77,11 +166,76 @@ y_test <- fashion_mnist$test$y
 ### c. Try building a convolutional neural network and see if you can improve test set performance.
 
 
+```{r}
+
+fashion_mnist <- dataset_fashion_mnist()
+x_train <- fashion_mnist$train$x
+y_train <- fashion_mnist$train$y
+x_test <- fashion_mnist$test$x
+y_test <- fashion_mnist$test$y
+
+x_train <- array_reshape(x_train, c(nrow(x_train), 28, 28, 1))
+x_test <- array_reshape(x_test, c(nrow(x_test), 28, 28, 1))
+
+# rescale
+x_train <- x_train / 255
+x_test <- x_test / 255
+
+# one-hot encoding of the target variable
+y_train <- to_categorical(y_train, 10)
+y_test <- to_categorical(y_test, 10)
+```
+
+
+```{r}
+cnn_model <- keras_model_sequential() 
+cnn_model %>% 
+  layer_conv_2d(filters = 32,
+                kernel_size = c(3, 3), 
+                activation = 'relu',
+                input_shape = c(28, 28, 1)) %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>% 
+  layer_dropout(rate = 0.25) %>%
+  layer_flatten() %>% 
+  layer_dense(units = 32, activation = 'relu') %>% 
+  layer_dense(units = 10, activation = 'softmax')
+```
+
+```{r}
+summary(cnn_model)
+```
+
+
+
+```{r}
+cnn_model %>% compile(
+  loss = 'categorical_crossentropy',
+  optimizer = optimizer_rmsprop(),
+  metrics = c('accuracy')
+)
+```
+
+```{r}
+history <- cnn_model %>% fit(
+  x_train, y_train, 
+  epochs = 2, batch_size = 128, 
+  validation_split = 0.2
+)
+```
+
+```{r}
+cnn_model %>% evaluate(x_test, y_test)
+```
+
+
+
 ### d. Just like before, experiment with different network architectures, regularization techniques and present your findings
 
 
 
 # 2. Hot dog or not hot dog?
+
+
 
 ### a. Pre-process data so that it is acceptable by Keras (set folder structure, bring images to the same size, etc).
 
