@@ -5,25 +5,25 @@ date: "April 5, 2019"
 output: html_document
 ---
 
-## Deep neural nets with `keras`
 
-The [homepage](https://keras.rstudio.com/) has great descrpitions, expamples
-and tutorials. Cheatsheet [here](https://www.rstudio.com/resources/cheatsheets/). 
+This is the second assignment of Benedek Pásztor for Data Science 3 at CEU.
+
+At the beginning the neccessary packages are loaded.
 
 ```{r}
 # install.packages("keras")
 library(keras)
 # install_keras()
-```
-
-  
-```{r}
 library(keras)
 library(here)
 library(grid)
 library(magick)  # not absolutely necessary
 ```
 
+
+# Task 1. - Deeplearning on Fashion MNIST data
+
+The dataset is loaded of fashion images. Train and test sets are defined.
 
 ```{r}
 fashion_mnist <- dataset_fashion_mnist()
@@ -36,6 +36,11 @@ y_test <- fashion_mnist$test$y
 
 ### a. Show some example images from the data.
 
+
+An example image is shown. There are 10 categories / classes in this dataset as indicated in the source: https://github.com/zalandoresearch/fashion-mnist
+
+This example shows a T-shirt labeled image.
+
 ```{r, fig.width=2, fig.height=2}
 show_mnist_image <- function(x) {
   image(1:28, 1:28, t(x)[,nrow(x):1],col=gray((0:255)/255)) 
@@ -44,11 +49,13 @@ show_mnist_image <- function(x) {
 show_mnist_image(x_train[18, , ])
 ```
 
+This other one as well.
 
 ```{r, fig.width=2, fig.height=2}
 show_mnist_image(x_train[27, , ])
 ```
 
+This one is a jeans.
 
 ```{r, fig.width=2, fig.height=2}
 show_mnist_image(x_train[98, , ])
@@ -59,34 +66,42 @@ show_mnist_image(x_train[98, , ])
 
 ##### - Normalize the data similarly to what we saw with MNIST.
 
+
+At the beginning of the exercise the dataset is normalized so that KERAS would be able to deal with it.
+
+Afterwards, the categorical variables are one-hot encoded, so that they can be treated as binary variables.
+
 ```{r}
-# reshape
 x_train <- array_reshape(x_train, c(dim(x_train)[1], 784)) 
 x_test <- array_reshape(x_test, c(dim(x_test)[1], 784)) 
-# rescale
+
 x_train <- x_train / 255
 x_test <- x_test / 255
 
-# one-hot encoding of the target variable
 y_train <- to_categorical(y_train, 10)
 y_test <- to_categorical(y_test, 10)
 ```
 
 ##### - Experiment with network architectures and settings (number of hidden layers, number of nodes, activation functions, dropout, etc.)
 
-###### Model 1
+###### Model 1 of non-CNN models
+
+Now, a first model is tested which is a fully connected neural network with three layers. The first layer has 128 units and has a relu activation. Then, a droupout of 0.2 is used for the nodes. This is followed by another relu-activated layer with 50 nodes. The final activation leading to the 10 output nodes is a softmax one.
 
 ```{r}
 model <- keras_model_sequential() 
 model <- model %>% 
   layer_dense(units = 128, activation = 'relu', input_shape = c(784)) %>%
-  layer_dropout(rate = 0.3) %>%
+  layer_dropout(rate = 0.2) %>%
+  layer_dense(units = 50, activation = 'relu') %>%
   layer_dense(units = 10, activation = 'softmax')
+
+summary(model)
+
 ```
 
-```{r}
-summary(model)
-```
+Categorical crossentropy is used as a loss function. The metrics is accuracy which is tested.
+
 ```{r}
 model %>% compile(
   loss = 'categorical_crossentropy',
@@ -95,24 +110,23 @@ model %>% compile(
 )
 ```
 
-```{r message = FALSE, tidy = TRUE}
+The training is done with 35 epochs with a batch size of 128. A validation frame is also used with 0.2 split ratio. The 35 epoch size has been chosen as after testing, it was seen that the accuracy metrics does not change further after this. In fact, after a couple of epochs the validation accuracy is rather stable.
+
+```{r}
 history <- model %>% fit(
   x_train, y_train, 
-  epochs = 4, batch_size = 128, 
+  epochs = 20, batch_size = 128, 
   validation_split = 0.2
 )
 ```
+
+With this model an accuracy of around 0.88 is reached. 
 
 ```{r}
 model %>% evaluate(x_test, y_test)
 ```
 
-###### Model 2
-
-##### - Explain what you have tried, what worked and what did not. Present a final model.
-
-
-##### - Make sure that you use enough epochs so that the validation error starts flattening out - provide a plot about the training history (plot(history))
+The training history can be seen below:
 
 ```{r}
 plot(history)
@@ -120,51 +134,177 @@ plot(history)
 
 
 
-###### Error check
+###### Model 2 of non-CNN models 
 
+The second model operates with a deeper network without any dropout rate.
 
-```{r}
-predicted_classes_test <- model %>% predict_classes(x_test)
-real_classes_test <- as.numeric(mnist$test$y)
-library(data.table)
-dt_pred_vs_real <- data.table(predicted = predicted_classes_test, real = real_classes_test)
-
-library(ggplot2)
-ggplot(dt_pred_vs_real[, .N, by = .(predicted, real)], aes(predicted, real)) +
-  geom_tile(aes(fill = N), colour = "white") +
-  scale_x_continuous(breaks = 0:9) +
-  scale_y_continuous(breaks = 0:9) +
-  geom_text(aes(label = sprintf("%1.0f", N)), vjust = 1, color = "white") +
-  scale_fill_viridis_c() +
-  theme_bw() + theme(legend.position = "none")
-```
+7 layers are used, with the first layer 128 nodes, then 50-100 in a switching manner until the latest layer which has 10 as an output. Relu activation is used, except for the last layer.
 
 ```{r}
-dt_pred_vs_real[, row_number := 1:.N]
-indices_of_mistakes <- dt_pred_vs_real[predicted != real][["row_number"]]
+model <- keras_model_sequential() 
+model <- model %>% 
+  layer_dense(units = 128, activation = 'relu', input_shape = c(784)) %>%
+  layer_dense(units = 50, activation = 'relu') %>%
+  layer_dense(units = 100, activation = 'relu') %>%
+  layer_dense(units = 50, activation = 'relu') %>%
+  layer_dense(units = 100, activation = 'relu') %>%
+    layer_dense(units = 50, activation = 'relu') %>%
+  layer_dense(units = 10, activation = 'softmax')
+
+summary(model)
+
+```
+
+Categorical crossentropy is used as a loss function. The metrics is accuracy which is tested.
+
+```{r}
+model %>% compile(
+  loss = 'categorical_crossentropy',
+  optimizer = optimizer_rmsprop(),
+  metrics = c('accuracy')
+)
+```
+
+The training is done with 35 epochs with a batch size of 128. A validation frame is also used with 0.2 split ratio. The 35 epoch size has been chosen as after testing, it was seen that the accuracy metrics does not change further after this. In fact, after a couple of epochs the validation accuracy is rather stable.
+
+```{r}
+history <- model %>% fit(
+  x_train, y_train, 
+  epochs = 20, batch_size = 128, 
+  validation_split = 0.2
+)
+```
+
+With this model an accuracy of around 0.87 is reached, a bit worse than model 1. 
+
+```{r}
+model %>% evaluate(x_test, y_test)
+```
+
+The training history of model 2 can be seen below:
+
+```{r}
+plot(history)
+```
+
+###### Model 3 of non-CNN models
+
+In the third model a very similar model is used as in the first one, however, this time the activation is via the sigmoid function.
+
+```{r}
+model <- keras_model_sequential() 
+model <- model %>% 
+  layer_dense(units = 128, activation = 'sigmoid', input_shape = c(784)) %>%
+  layer_dropout(rate = 0.2) %>%
+  layer_dense(units = 50, activation = 'sigmoid') %>%
+  layer_dense(units = 10, activation = 'softmax')
+
+summary(model)
+
+```
+
+Categorical crossentropy is used as a loss function. The metrics is accuracy which is tested.
+
+```{r}
+model %>% compile(
+  loss = 'categorical_crossentropy',
+  optimizer = optimizer_rmsprop(),
+  metrics = c('accuracy')
+)
+```
+
+The training is done with 35 epochs with a batch size of 128. A validation frame is also used with 0.2 split ratio. The 35 epoch size has been chosen as after testing, it was seen that the accuracy metrics does not change further after this. In fact, after a couple of epochs the validation accuracy is rather stable.
+
+```{r}
+history <- model %>% fit(
+  x_train, y_train, 
+  epochs = 20, batch_size = 128, 
+  validation_split = 0.2
+)
+```
+
+With this model an accuracy of around 0.885 is reached. 
+
+```{r}
+model %>% evaluate(x_test, y_test)
+```
+
+The training history of model 3 can be seen below:
+
+```{r}
+plot(history)
 ```
 
 
-```{r, fig.width=2, fig.height=2}
-ix <- indices_of_mistakes[1]
 
-dt_pred_vs_real[row_number == ix]
-show_mnist_image(fashion_mnist$test$x[ix, , ])
+###### Model 4 of non-CNN models
+
+As a forth model, a different batch size is used with the currently best performing model, model 1. The batch size is increased to 200.
+
+```{r}
+model <- keras_model_sequential() 
+model <- model %>% 
+  layer_dense(units = 128, activation = 'relu', input_shape = c(784)) %>%
+  layer_dropout(rate = 0.2) %>%
+  layer_dense(units = 50, activation = 'relu') %>%
+  layer_dense(units = 10, activation = 'softmax')
+
+summary(model)
+
 ```
 
-```{r, fig.width=2, fig.height=2}
-ix <- indices_of_mistakes[11]
-
-dt_pred_vs_real[row_number == ix]
-show_mnist_image(fashion_mnist$test$x[ix, , ])
+```{r}
+model %>% compile(
+  loss = 'categorical_crossentropy',
+  optimizer = optimizer_rmsprop(),
+  metrics = c('accuracy')
+)
 ```
+
+```{r}
+history <- model %>% fit(
+  x_train, y_train, 
+  epochs = 20, batch_size = 200, 
+  validation_split = 0.2
+)
+```
+
+With this model an accuracy of around 0.88 is reached. 
+
+```{r}
+model %>% evaluate(x_test, y_test)
+```
+
+The training history can be seen below:
+
+```{r}
+plot(history)
+```
+
+
+
+
+##### - Explain what you have tried, what worked and what did not. Present a final model.
+
+We could see that the training accuracy has been increasing more constantly than tha validation accuracy. The highest accuracy 0.8911 has been reached with an increased batch-sized first model, model 4.
+
+The final model hence contains relu-activated functions and dropout. First, a 128-nodes relu-activated layer, then a dropout rate of 0.2, then another relu-activated function with 50 nodes. Finally, an ouput layer with softmax activation and 10 nodes.
+
+##### - Make sure that you use enough epochs so that the validation error starts flattening out - provide a plot about the training history (plot(history))
+
+Training history plots are provided below each model.
 
 
 ##### - Evaluate the model on the test set. How does test error compare to validation error?
 
+The test errors have been constantly evaluated up until now to compare the models. We could see that the validation accuracy is slightly higher in most cases compared to the test error. Nonetheless, not both can be considered as honest measurement indicators, it is better to use the test error, as it refers to the data completely left out from the training.
 
-### c. Try building a convolutional neural network and see if you can improve test set performance.
 
+### c. Try building a convolutional neural network and see if you can improve test set performance. and d. Just like before, experiment with different network architectures, regularization techniques and present your findings
+
+###### Model 1 of CNN models
+
+To build CNN in Keras, the input data should be different to the previous one. Below the data is transformed for CNN needs.
 
 ```{r}
 
@@ -185,6 +325,8 @@ y_test <- to_categorical(y_test, 10)
 ```
 
 
+As an initial model, a 6-layered CNN is built. First, a filtering with relu activation and a cernel size of 3-3. Then, a max pooling with a pool size of 2-2. Afterwards a droupout rate of 0.25 is used. This is followed by flattening and two last layers with 32 node size and then finally a softmax-activated output layer with 10 nodes.
+
 ```{r}
 cnn_model <- keras_model_sequential() 
 cnn_model %>% 
@@ -203,7 +345,7 @@ cnn_model %>%
 summary(cnn_model)
 ```
 
-
+Categorical crossentropy is used as the loss function.
 
 ```{r}
 cnn_model %>% compile(
@@ -216,28 +358,37 @@ cnn_model %>% compile(
 ```{r}
 history <- cnn_model %>% fit(
   x_train, y_train, 
-  epochs = 2, batch_size = 128, 
+  epochs = 20, batch_size = 128, 
   validation_split = 0.2
 )
 ```
+
+In this model, a validation accuracz of 0.91 is reached. Moreover, the test accuracy is very similar, around 0.91 again.
 
 ```{r}
 cnn_model %>% evaluate(x_test, y_test)
 ```
 
 
+The training history can be seen below:
 
-### d. Just like before, experiment with different network architectures, regularization techniques and present your findings
+```{r}
+plot(history)
+```
 
+
+###### Model 2 of CNN models
+
+Now another type of network is used with an increased batch size. The filter kernel size is now 3, as well as the max pooling layer's pool size. The dropout is kept at 0.25, and the last layers of relu activation and the softmax output layer are kept.
 
 ```{r}
 cnn_model <- keras_model_sequential() 
 cnn_model %>% 
   layer_conv_2d(filters = 32,
-                kernel_size = c(3, 3), 
+                kernel_size = c(3 , 3), 
                 activation = 'relu',
                 input_shape = c(28, 28, 1)) %>%
-  layer_max_pooling_2d(pool_size = c(2, 2)) %>% 
+  layer_max_pooling_2d(pool_size = c(3, 3)) %>% 
   layer_dropout(rate = 0.25) %>%
   layer_flatten() %>% 
   layer_dense(units = 32, activation = 'relu') %>% 
@@ -261,15 +412,162 @@ cnn_model %>% compile(
 ```{r}
 history <- cnn_model %>% fit(
   x_train, y_train, 
-  epochs = 2, batch_size = 128, 
+  epochs = 20, batch_size = 200, 
   validation_split = 0.2
 )
 ```
 
 
-# 2. Hot dog or not hot dog?
+In this model, a validation accuracy of 0.9 is reached. This one resulted in a lower performance than model 1.
+
+```{r}
+cnn_model %>% evaluate(x_test, y_test)
+```
+
+
+The training history can be seen below:
+
+```{r}
+plot(history)
+```
+
+###### Model 3 of CNN models
+
+Model 3 deals with a similar architecture as model 1, however, without the dropout. This is an experiment to see the effect of the dropout layer.
+
+```{r}
+cnn_model <- keras_model_sequential() 
+cnn_model %>% 
+  layer_conv_2d(filters = 32,
+                kernel_size = c(3, 3), 
+                activation = 'relu',
+                input_shape = c(28, 28, 1)) %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>% 
+  layer_flatten() %>% 
+  layer_dense(units = 32, activation = 'relu') %>% 
+  layer_dense(units = 10, activation = 'softmax')
+```
+
+```{r}
+summary(cnn_model)
+```
+
+Categorical crossentropy is used as the loss function.
+
+```{r}
+cnn_model %>% compile(
+  loss = 'categorical_crossentropy',
+  optimizer = optimizer_rmsprop(),
+  metrics = c('accuracy')
+)
+```
+
+```{r}
+history <- cnn_model %>% fit(
+  x_train, y_train, 
+  epochs = 20, batch_size = 128, 
+  validation_split = 0.2
+)
+```
+
+With this model 3 a lower accuracy, slightly lower has been reached for the test-set. This indicates that the dropout is useful to increase the test accuracy, although it might decrease the training validation accuracy as such.
+
+
+```{r}
+cnn_model %>% evaluate(x_test, y_test)
+```
+
+The training history can be seen below:
+
+```{r}
+plot(history)
+```
+
+
+###### Model 4 of CNN models
+
+Model 4 deals with a deep neural net to see the effect of how more layers change the performance. The filtering and the max pooling is several times used, then a dropout of 0.25 is used, followed by flattening, a relu-activated layer and finally a softmax-activated layer for categorization.
+
+```{r}
+cnn_model <- keras_model_sequential() 
+cnn_model %>% 
+  layer_conv_2d(filters = 32,
+                kernel_size = c(3, 3), 
+                activation = 'relu',
+                input_shape = c(28, 28, 1)) %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>% 
+   layer_conv_2d(filters = 32,
+                kernel_size = c(3, 3), 
+                activation = 'relu') %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>% 
+  layer_conv_2d(filters = 32,
+                kernel_size = c(3, 3), 
+                activation = 'relu') %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>% 
+  layer_dropout(rate = 0.25) %>%
+  layer_flatten() %>% 
+  layer_dense(units = 32, activation = 'relu') %>% 
+  layer_dense(units = 10, activation = 'softmax')
+```
+
+The summary of the layers and the parameters can be seen below.
+
+```{r}
+summary(cnn_model)
+```
+
+Categorical crossentropy is used as the loss function.
+
+```{r}
+cnn_model %>% compile(
+  loss = 'categorical_crossentropy',
+  optimizer = optimizer_rmsprop(),
+  metrics = c('accuracy')
+)
+```
+
+```{r}
+history <- cnn_model %>% fit(
+  x_train, y_train, 
+  epochs = 20, batch_size = 128, 
+  validation_split = 0.2
+)
+```
+
+With this Model 4 of CNN an accuracy of 0.87 has been reached for the validation set, and a 0.86 for the testing set. This is not an as good performing model as the one with only one layer of convolution.
+
+
+```{r}
+cnn_model %>% evaluate(x_test, y_test)
+```
+
+The training history can be seen below:
+
+```{r}
+plot(history)
+```
+
+
+
+
+### Conclusion of task 1.
+
+As a conclusion of this exercise, convolutional neural networks have been performing better. The best-achieving Model 1 of CNN was able to reach around 91% of test accuracy. It is interesting to note  that the same model with deeper network (model 4) was resulting in lower performance measures.
+
+The best model (model 1) first filters with relu activation and a cernel size of 3-3. Then, a max pooling with a pool size of 2-2. Afterwards a droupout rate of 0.25 is used. This is followed by flattening and two last layers with 32 node size and then finally a softmax-activated output layer with 10 nodes.
+
+
+The best-performing non CNN model was model 4 out of the non-CNN networks, with an increased batch-size to 200. Nonetheless, the performance of this was lower than of the CNN ones.
+
+
+
+
+# Task 2. - Deeplearning on Hot dog or not hot dog? data
+
 
 ### a. Pre-process data so that it is acceptable by Keras (set folder structure, bring images to the same size, etc).
+
+Before starting the exercise, let us get familiarized with the images. Here is a hot-dog-labeled picture presented.
 
 
 ```{r}
@@ -284,12 +582,16 @@ image_read(example_image_path)
 ```
 
 
+Then, a not hot dog type of random picture is also checked.
+
 ```{r}
 example_image_path <- file.path(here(), "/data/hot-dog-not-hot-dog/train/not_hot_dog/100945.jpg")
 
 image_read(example_image_path)
 ```
 
+
+The data is separated originally to a training and to a test set. Nonetheless, to support training, it has been decided by the analyst to select random 80 pictures out of the 250 pictures of test sets to use as validation.
 
 ```{r}
 train_datagen <- image_data_generator(rescale = 1/255)  
@@ -299,12 +601,6 @@ validation_datagen <- image_data_generator(rescale = 1/255)
 test_datagen <- image_data_generator(rescale = 1/255)  
 ```
 
-```{r}
-xx <- flow_images_from_data(
-  array_reshape(x * 255, c(1, dim(x))),  
-  generator = train_datagen
-)
-```
 
 ```{r}
 image_size <- c(150, 150)
@@ -338,6 +634,10 @@ test_generator <- flow_images_from_directory(
 
 ### b. Estimate a convolutional neural network to predict if an image contains a hot dog or not. Evaluate your model on the test set.
 
+The first CNN which is estimated on the set is deep, it contains 10 layers. Three times filtering with 3x3 kernel size, then max pooling, then filtering again, then again max pooling, then filtering again, then again max pooling. Finally, before a final relu activated 8 noded layer and a final sigmoid one-noded layer, there is a dropout of 0.25 and a flattening layer utilized.
+
+Binary crossentropy is being used as the loss-function and accuracy is being used as a performance indicator.
+
 
 ```{r}
 
@@ -374,15 +674,40 @@ hot_dog_model %>% compile(
 history <- hot_dog_model %>% fit_generator(
   train_generator,
   steps_per_epoch = 2000 / batch_size,
-  epochs = 30,
+  epochs = 20,
   validation_data = validation_generator,
   validation_steps = 50
 )
 ```
 
-### c. Could data augmentation techniques help with achieving higher predictive accuracy? Try some augmentations that you think make sense and compare
+
+The model reaches up to over 0.57 of accuracy for the validation set. Nonetheless, as seen below, for the test set it remains slightly below 0.55 of accuracy.
 
 ```{r}
+hot_dog_model %>% evaluate_generator(test_generator, steps = 20)
+```
+
+
+### c. Could data augmentation techniques help with achieving higher predictive accuracy? Try some augmentations that you think make sense and compare
+
+Two models are tested with augmentation.
+
+###### Model 1 with augmentation
+
+
+Data augmentation techniques usually helps largely accuracy, as it gives the possibility to not to check the exact photos themselves only, but to try rescaling, rotate, shifting width/height range, shear images, zoom in, or to flip the images, which would then be considered as well during training.
+
+Below an example can be seen for a not hot-dog picture how it can get rotated after data augmentation.
+
+```{r}
+img <- image_load(example_image_path, target_size = c(150, 150))
+x <- image_to_array(img) / 255
+grid::grid.raster(x)
+xx <- flow_images_from_data(
+  array_reshape(x * 255, c(1, dim(x))), 
+  generator = train_datagen
+)
+
 train_datagen = image_data_generator(
   rescale = 1/255,
   rotation_range = 40,
@@ -401,6 +726,8 @@ image_read(augmented_versions[[9]])
 ```
 
 
+The model itself is similar to the one used previously.
+
 ```{r}
 hot_dog_model <- keras_model_sequential() 
 hot_dog_model %>% 
@@ -434,20 +761,130 @@ hot_dog_model %>% compile(
 history <- hot_dog_model %>% fit_generator(
   train_generator,
   steps_per_epoch = 2000 / batch_size,
-  epochs = 30,
+  epochs = 20,
   validation_data = validation_generator,
   validation_steps = 50
 )
+```
+
+This model has not achieved a significantly better result. Both on the validation set and on the test set, it has around 0.52 accuracy.
+
+```{r}
+hot_dog_model %>% evaluate_generator(test_generator, steps = 20)
+```
+
+The training history can be seen below:
+
+```{r}
+plot(history)
+```
+
+
+
+###### Model 2 with augmentation
+
+The second model with augmentation allows for higher ranges. This time it is the highest priority to reach higher performance increase before dealing with transfer networks. 
+
+```{r}
+img <- image_load(example_image_path, target_size = c(150, 150))
+x <- image_to_array(img) / 255
+grid::grid.raster(x)
+xx <- flow_images_from_data(
+  array_reshape(x * 255, c(1, dim(x))), 
+  generator = train_datagen
+)
+
+train_datagen = image_data_generator(
+  rescale = 1/255,
+  rotation_range = 40,
+  width_shift_range = 0.3,
+  height_shift_range = 0.3,
+  shear_range = 0.4,
+  zoom_range = 0.4,
+  horizontal_flip = TRUE,
+  fill_mode = "nearest"
+)
+
+augmented_versions <- lapply(1:10, function(ix) generator_next(xx) %>%  {.[1, , , ]})
+
+grid::grid.raster(augmented_versions[[3]])
+image_read(augmented_versions[[9]])
+```
+
+
+The model itself is similar to the one used previously. Nonetheless, this time an even deeper network is used in the hope to reach higher performance.
+
+```{r}
+hot_dog_model <- keras_model_sequential() 
+hot_dog_model %>% 
+  layer_conv_2d(filters = 32,
+                kernel_size = c(3, 3), 
+                activation = 'relu',
+                input_shape = c(150, 150, 3)) %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>% 
+  layer_conv_2d(filters = 16,
+                kernel_size = c(3, 3), 
+                activation = 'relu') %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>% 
+  layer_conv_2d(filters = 16,
+                kernel_size = c(3, 3), 
+                activation = 'relu') %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>% 
+  layer_conv_2d(filters = 16,
+                kernel_size = c(3, 3), 
+                activation = 'relu') %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>% 
+  layer_conv_2d(filters = 16,
+                kernel_size = c(3, 3), 
+                activation = 'relu') %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>% 
+  layer_dropout(rate = 0.25) %>% 
+  layer_flatten() %>% 
+  layer_dense(units = 8, activation = 'relu') %>% 
+  layer_dense(units = 1, activation = "sigmoid")  
+
+hot_dog_model %>% compile(
+  loss = "binary_crossentropy",
+  optimizer = optimizer_rmsprop(lr = 2e-5),
+  metrics = c("accuracy")
+)
+
+```
+
+```{r}
+history <- hot_dog_model %>% fit_generator(
+  train_generator,
+  steps_per_epoch = 2000 / batch_size,
+  epochs = 20,
+  validation_data = validation_generator,
+  validation_steps = 50
+)
+```
+
+It is interesting to note that with even this second augmentation model, the validation accuracy did not increase significantly. Nonetheless, the testing accuracy slightly increased up to almost 0.53.
+
+```{r}
+hot_dog_model %>% evaluate_generator(test_generator, steps = 20)
+```
+
+The training history can be seen below:
+
+```{r}
+plot(history)
 ```
 
 
 ### d. Try to rely on some pre-built neural networks to aid prediction. Can you achieve a better performance using transfer learning for this problem?
 
 
+In the last part of the task 2 transfer learning is used in the hope to reach higher performance. The imagenet weights are used from the MobileNet architecture which is used for transfer learning.
+
 
 ```{r}
 model_imagenet <- application_mobilenet(weights = "imagenet")
 ```
+
+Below we can see an example of what scores this pre-built neural net has for its categories. The goal is to build on this already given network to then have a higher-performing model for the hot dog problem.
 
 ```{r}
 example_image_path <- file.path(here(), "/data/hot-dog-not-hot-dog/train/not_hot_dog/106608.jpg")
@@ -461,6 +898,8 @@ x <- mobilenet_preprocess_input(x)
 preds <- model_imagenet %>% predict(x)
 mobilenet_decode_predictions(preds, top = 3)[[1]]
 ```
+
+The necessary sets are defined and data augmentation is also used for achieving high performance.
 
 ```{r}
 train_datagen = image_data_generator(
@@ -535,9 +974,19 @@ model %>% fit_generator(
 )
 ```
 
+
+
 ```{r}
 model %>% evaluate_generator(test_generator, steps = 20)
 ```
 
+With this model  based on transfer learning a validation accuracy of 0.72 was reached. Nonetheless, on the test set around 0.77 was reached which is of the highest. 
 
+
+### Conclusion of task 2
+
+It could be seen that very low performing models were achieved with simple CNN, or even augmented CNN models. Although data augmentation seems to be a powerful way to fight against overfitting, the simple models built on this image-sets have been not being able to capture the categories.
+
+
+Once transfer-learning was used, a significantly higher performing model was achieved with over 0.7 of accuracy. It is important to note as a lesson that the transfer learning model was very deep. Hence, it seems that for this kind of recognitions, very deep networks are needed.
 
