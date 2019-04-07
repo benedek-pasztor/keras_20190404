@@ -177,11 +177,9 @@ y_test <- fashion_mnist$test$y
 x_train <- array_reshape(x_train, c(nrow(x_train), 28, 28, 1))
 x_test <- array_reshape(x_test, c(nrow(x_test), 28, 28, 1))
 
-# rescale
 x_train <- x_train / 255
 x_test <- x_test / 255
 
-# one-hot encoding of the target variable
 y_train <- to_categorical(y_train, 10)
 y_test <- to_categorical(y_test, 10)
 ```
@@ -232,15 +230,314 @@ cnn_model %>% evaluate(x_test, y_test)
 ### d. Just like before, experiment with different network architectures, regularization techniques and present your findings
 
 
+```{r}
+cnn_model <- keras_model_sequential() 
+cnn_model %>% 
+  layer_conv_2d(filters = 32,
+                kernel_size = c(3, 3), 
+                activation = 'relu',
+                input_shape = c(28, 28, 1)) %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>% 
+  layer_dropout(rate = 0.25) %>%
+  layer_flatten() %>% 
+  layer_dense(units = 32, activation = 'relu') %>% 
+  layer_dense(units = 10, activation = 'softmax')
+```
+
+```{r}
+summary(cnn_model)
+```
+
+
+
+```{r}
+cnn_model %>% compile(
+  loss = 'categorical_crossentropy',
+  optimizer = optimizer_rmsprop(),
+  metrics = c('accuracy')
+)
+```
+
+```{r}
+history <- cnn_model %>% fit(
+  x_train, y_train, 
+  epochs = 2, batch_size = 128, 
+  validation_split = 0.2
+)
+```
+
 
 # 2. Hot dog or not hot dog?
 
-
-
 ### a. Pre-process data so that it is acceptable by Keras (set folder structure, bring images to the same size, etc).
+
+
+```{r}
+library(keras)
+library(here)
+library(grid)
+library(magick)
+
+example_image_path <- file.path(here(), "/data/hot-dog-not-hot-dog/train/hot_dog/1000288.jpg")
+
+image_read(example_image_path)
+```
+
+
+```{r}
+example_image_path <- file.path(here(), "/data/hot-dog-not-hot-dog/train/not_hot_dog/100945.jpg")
+
+image_read(example_image_path)
+```
+
+
+```{r}
+train_datagen <- image_data_generator(rescale = 1/255)  
+
+validation_datagen <- image_data_generator(rescale = 1/255)  
+
+test_datagen <- image_data_generator(rescale = 1/255)  
+```
+
+```{r}
+xx <- flow_images_from_data(
+  array_reshape(x * 255, c(1, dim(x))),  
+  generator = train_datagen
+)
+```
+
+```{r}
+image_size <- c(150, 150)
+batch_size <- 30
+
+train_generator <- flow_images_from_directory(
+  file.path(here(), "data/hot-dog-not-hot-dog/train/"), 
+  train_datagen,          
+  target_size = image_size,  
+  batch_size = batch_size,
+  class_mode = "binary"       
+)
+
+validation_generator <- flow_images_from_directory(
+  file.path(here(), "data/hot-dog-not-hot-dog/validation/"),   
+  validation_datagen,
+  target_size = image_size,
+  batch_size = batch_size,
+  class_mode = "binary"
+)
+
+test_generator <- flow_images_from_directory(
+  file.path(here(), "data/hot-dog-not-hot-dog/test/"), 
+  test_datagen,
+  target_size = image_size,
+  batch_size = batch_size,
+  class_mode = "binary"
+)
+```
+
 
 ### b. Estimate a convolutional neural network to predict if an image contains a hot dog or not. Evaluate your model on the test set.
 
+
+```{r}
+
+
+hot_dog_model <- keras_model_sequential() 
+hot_dog_model %>% 
+  layer_conv_2d(filters = 32,
+                kernel_size = c(3, 3), 
+                activation = 'relu',
+                input_shape = c(150, 150, 3)) %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>% 
+  layer_conv_2d(filters = 16,
+                kernel_size = c(3, 3), 
+                activation = 'relu') %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>% 
+  layer_conv_2d(filters = 16,
+                kernel_size = c(3, 3), 
+                activation = 'relu') %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>% 
+  layer_dropout(rate = 0.25) %>% 
+  layer_flatten() %>% 
+  layer_dense(units = 8, activation = 'relu') %>% 
+  layer_dense(units = 1, activation = "sigmoid")  
+
+hot_dog_model %>% compile(
+  loss = "binary_crossentropy",
+  optimizer = optimizer_rmsprop(lr = 2e-5),
+  metrics = c("accuracy")
+)
+
+```
+
+```{r}
+history <- hot_dog_model %>% fit_generator(
+  train_generator,
+  steps_per_epoch = 2000 / batch_size,
+  epochs = 30,
+  validation_data = validation_generator,
+  validation_steps = 50
+)
+```
+
 ### c. Could data augmentation techniques help with achieving higher predictive accuracy? Try some augmentations that you think make sense and compare
 
+```{r}
+train_datagen = image_data_generator(
+  rescale = 1/255,
+  rotation_range = 40,
+  width_shift_range = 0.2,
+  height_shift_range = 0.2,
+  shear_range = 0.2,
+  zoom_range = 0.2,
+  horizontal_flip = TRUE,
+  fill_mode = "nearest"
+)
+
+augmented_versions <- lapply(1:10, function(ix) generator_next(xx) %>%  {.[1, , , ]})
+
+grid::grid.raster(augmented_versions[[3]])
+image_read(augmented_versions[[9]])
+```
+
+
+```{r}
+hot_dog_model <- keras_model_sequential() 
+hot_dog_model %>% 
+  layer_conv_2d(filters = 32,
+                kernel_size = c(3, 3), 
+                activation = 'relu',
+                input_shape = c(150, 150, 3)) %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>% 
+  layer_conv_2d(filters = 16,
+                kernel_size = c(3, 3), 
+                activation = 'relu') %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>% 
+  layer_conv_2d(filters = 16,
+                kernel_size = c(3, 3), 
+                activation = 'relu') %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>% 
+  layer_dropout(rate = 0.25) %>% 
+  layer_flatten() %>% 
+  layer_dense(units = 8, activation = 'relu') %>% 
+  layer_dense(units = 1, activation = "sigmoid")  
+
+hot_dog_model %>% compile(
+  loss = "binary_crossentropy",
+  optimizer = optimizer_rmsprop(lr = 2e-5),
+  metrics = c("accuracy")
+)
+
+```
+
+```{r}
+history <- hot_dog_model %>% fit_generator(
+  train_generator,
+  steps_per_epoch = 2000 / batch_size,
+  epochs = 30,
+  validation_data = validation_generator,
+  validation_steps = 50
+)
+```
+
+
 ### d. Try to rely on some pre-built neural networks to aid prediction. Can you achieve a better performance using transfer learning for this problem?
+
+
+
+```{r}
+model_imagenet <- application_mobilenet(weights = "imagenet")
+```
+
+```{r}
+example_image_path <- file.path(here(), "/data/hot-dog-not-hot-dog/train/not_hot_dog/106608.jpg")
+img <- image_load(example_image_path, target_size = c(224, 224))  
+
+x <- image_to_array(img)
+
+x <- array_reshape(x, c(1, dim(x)))
+x <- mobilenet_preprocess_input(x)
+
+preds <- model_imagenet %>% predict(x)
+mobilenet_decode_predictions(preds, top = 3)[[1]]
+```
+
+```{r}
+train_datagen = image_data_generator(
+  rescale = 1/255,
+  rotation_range = 40,
+  width_shift_range = 0.2,
+  height_shift_range = 0.2,
+  shear_range = 0.2,
+  zoom_range = 0.2,
+  horizontal_flip = TRUE,
+  fill_mode = "nearest"
+)
+
+validation_datagen <- image_data_generator(rescale = 1/255)  
+
+test_datagen <- image_data_generator(rescale = 1/255)  
+
+image_size <- c(128, 128)
+batch_size <- 100 
+
+train_generator <- flow_images_from_directory(
+  file.path(here(), "data/hot-dog-not-hot-dog/train/"), 
+  train_datagen,          
+  target_size = image_size,  
+  batch_size = batch_size,
+  class_mode = "binary"    
+)
+
+validation_generator <- flow_images_from_directory(
+  file.path(here(), "data/hot-dog-not-hot-dog/validation/"),   
+  validation_datagen,
+  target_size = image_size,
+  batch_size = batch_size,
+  class_mode = "binary"
+)
+
+test_generator <- flow_images_from_directory(
+  file.path(here(), "data/hot-dog-not-hot-dog/test/"), 
+  test_datagen,
+  target_size = image_size,
+  batch_size = batch_size,
+  class_mode = "binary"
+)
+```
+
+
+```{r}
+base_model <- application_mobilenet(weights = 'imagenet', include_top = FALSE,
+                                    input_shape = c(image_size, 3))
+
+freeze_weights(base_model)
+
+predictions <- base_model$output %>% 
+  layer_global_average_pooling_2d() %>% 
+  layer_dense(units = 16, activation = 'relu') %>% 
+  layer_dense(units = 1, activation = 'sigmoid')
+
+model <- keras_model(inputs = base_model$input, outputs = predictions)
+
+model %>% compile(
+  loss = "binary_crossentropy",
+  optimizer = optimizer_rmsprop(lr = 2e-5),
+  metrics = c("accuracy")
+)
+
+model %>% fit_generator(
+  train_generator,
+  steps_per_epoch = 2000 / batch_size,
+  epochs = 5, 
+  validation_data = validation_generator,
+  validation_steps = 50
+)
+```
+
+```{r}
+model %>% evaluate_generator(test_generator, steps = 20)
+```
+
+
+
