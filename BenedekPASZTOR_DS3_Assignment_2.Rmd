@@ -2,7 +2,9 @@
 title: 'Data Science 3: Assignment 2'
 author: "Benedek PÁSZTOR"
 date: "April 5, 2019"
-output: html_document
+output:
+  word_document: default
+  html_document: default
 ---
 
 
